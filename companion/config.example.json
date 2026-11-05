@@ -1,0 +1,10 @@
+{
+  "relayUrl": "ws://127.0.0.1:7711",
+  "httpPort": 7712,
+  "sender": "Player-Realm",
+  "defaultRoom": "global",
+  "wowAddonPath": "",
+  "wowSavedVariablesPath": "",
+  "pollMs": 1500,
+  "notes": "Set wowAddonPath to .../Interface/AddOns/iChat so Inbox.lua can be written. Set wowSavedVariablesPath to .../WTF/Account/<ACCOUNT>/SavedVariables/iChat.lua after the addon has flushed once. Leave both empty to use companion-only (browser) chat."
+}
