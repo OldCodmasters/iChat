@@ -1,0 +1,17 @@
+{
+  "name": "ichat-companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "iChat local companion — WebSocket bridge + SavedVariables/Inbox file sync + local chat UI",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

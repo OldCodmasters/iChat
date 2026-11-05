@@ -1,0 +1,17 @@
+{
+  "name": "ichat-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "iChat WebSocket room relay — cross-region message fan-out",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -39,3 +39,18 @@ luac.out
 *.x86_64
 *.hex
 
+# Node
+node_modules/
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+
+# iChat local config (may contain machine paths)
+companion/config.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

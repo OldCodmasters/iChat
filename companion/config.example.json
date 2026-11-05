@@ -1,0 +1,12 @@
+{
+  "relayUrl": "ws://127.0.0.1:7711",
+  "httpPort": 7712,
+  "sender": "Player-Realm",
+  "defaultRoom": "global-say",
+  "defaultChannel": "say",
+  "wowAddonPath": "",
+  "wowSavedVariablesPath": "",
+  "pollMs": 1500,
+  "joinRooms": ["global-say", "global-trade", "global-city", "whisper", "room:general"],
+  "notes": "Stage 1 primary UX is in-game GlobalChat (Chat settings). This companion is required for relay I/O; the local browser UI is a realtime fallback / Sync helper. Set wowAddonPath to .../Interface/AddOns/iChat and wowSavedVariablesPath to .../WTF/Account/<ACCOUNT>/SavedVariables/iChat.lua after the addon has flushed once."
+}
