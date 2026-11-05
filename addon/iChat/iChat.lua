@@ -1,8 +1,8 @@
 --[[
-  iChat core — GlobalChat outbox/inbox + Sync.
+  iChat core — GlobalChat send via chatlog bridge (event-driven companion watch).
 
-  Primary UX is Channels.lua (native ChatFrame + Chat settings).
-  This file owns SavedVariables bridging to the companion.
+  Live receive is the companion overlay (ChatFrame cannot be pushed without
+  /reload or process injection). Chat settings GlobalChat types stay in Channels.lua.
 ]]
 
 IChat = IChat or {}
@@ -25,8 +25,6 @@ function IChat.EnsureDB()
     IChatDB = {}
   end
   IChatDB.roomName = IChatDB.roomName or "general"
-  IChatDB.outbox = IChatDB.outbox or {}
-  IChatDB.seenInbox = IChatDB.seenInbox or {}
   IChatDB.chat = IChatDB.chat or {}
 end
 
@@ -43,59 +41,6 @@ function IChat.SetRoomName(name)
   end
   IChatDB.roomName = name
   print("|cffd4a017iChat|r Global Room set to |cffffffff" .. name .. "|r")
-end
-
-function IChat.TrimOutbox()
-  IChat.EnsureDB()
-  while #IChatDB.outbox > 50 do
-    table.remove(IChatDB.outbox, 1)
-  end
-end
-
---- Queue a GlobalChat message for the companion.
--- @param kind whisper|room|say|trade|city
--- @param text message body
--- @param opts optional { target=, roomName= }
-function IChat.SendChannel(kind, text, opts)
-  IChat.EnsureDB()
-  opts = opts or {}
-  text = strtrim(text or "")
-  if text == "" then
-    return
-  end
-  if #text > 500 then
-    text = text:sub(1, 500)
-  end
-
-  local id = tostring(now()) .. "-" .. tostring(math.random(1000, 9999))
-  local entry = {
-    id = id,
-    channel = kind,
-    room = IChat.RelayRoomFor(kind, opts),
-    roomName = opts.roomName or (kind == "room" and IChat.GetRoomName() or nil),
-    target = opts.target,
-    sender = playerLabel(),
-    text = text,
-    ts = now(),
-  }
-
-  table.insert(IChatDB.outbox, {
-    id = entry.id,
-    channel = entry.channel,
-    room = entry.room,
-    roomName = entry.roomName,
-    target = entry.target,
-    text = entry.text,
-    ts = entry.ts,
-  })
-  IChat.TrimOutbox()
-
-  -- Echo locally immediately (optimistic UI).
-  if IChat.Channels and IChat.Channels.PaintMessage then
-    IChat.Channels.PaintMessage(entry)
-  end
-
-  print("|cffd4a017iChat|r queued |cffffffff" .. kind .. "|r — click Sync (/ichat sync) so the companion can send it.")
 end
 
 function IChat.RelayRoomFor(kind, opts)
@@ -116,53 +61,45 @@ function IChat.RelayRoomFor(kind, opts)
   return "global-say"
 end
 
-function IChat.MergeInbox()
+--- Send a GlobalChat message (realtime path: bridge channel → chatlog → companion).
+-- @param kind whisper|room|say|trade|city
+-- @param text message body
+-- @param opts optional { target=, roomName= }
+function IChat.SendChannel(kind, text, opts)
   IChat.EnsureDB()
-  if type(IChatInbox) ~= "table" then
-    return 0
+  opts = opts or {}
+  text = strtrim(text or "")
+  if text == "" then
+    return
   end
-  local added = 0
-  local me = string.lower(playerLabel())
-  for _, m in ipairs(IChatInbox) do
-    local id = m.id or (tostring(m.ts or 0) .. "|" .. tostring(m.sender) .. "|" .. tostring(m.text))
-    if not IChatDB.seenInbox[id] then
-      IChatDB.seenInbox[id] = true
-      local channel = m.channel or "say"
-      -- Whisper filter: show if we are sender or target.
-      if channel == "whisper" and m.target then
-        local t = string.lower(tostring(m.target))
-        local s = string.lower(tostring(m.sender or ""))
-        if t ~= me and s ~= me then
-          -- still mark seen; not for this character
-        else
-          if IChat.Channels then
-            IChat.Channels.PaintMessage(m)
-          end
-          added = added + 1
-        end
-      else
-        if IChat.Channels then
-          IChat.Channels.PaintMessage(m)
-        end
-        added = added + 1
-      end
-    end
+  if #text > 180 then
+    text = text:sub(1, 180)
   end
-  local n = 0
-  for _ in pairs(IChatDB.seenInbox) do
-    n = n + 1
-  end
-  if n > 500 then
-    IChatDB.seenInbox = {}
-  end
-  return added
-end
 
-function IChat.Sync()
-  if C_UI and C_UI.Reload then
-    C_UI.Reload()
-  else
-    ReloadUI()
+  if kind == "room" and not opts.roomName then
+    opts.roomName = IChat.GetRoomName()
+  end
+
+  local entry = {
+    id = tostring(now()) .. "-" .. tostring(math.random(1000, 9999)),
+    channel = kind,
+    room = IChat.RelayRoomFor(kind, opts),
+    roomName = opts.roomName,
+    target = opts.target,
+    sender = playerLabel(),
+    text = text,
+    ts = now(),
+  }
+
+  local ok = IChat.Bridge and IChat.Bridge.Emit(kind, text, opts)
+  if not ok then
+    print("|cffd4a017iChat|r send failed — bridge channel unavailable.")
+    return
+  end
+
+  -- Local echo into enabled ChatFrames (outgoing only).
+  if IChat.Channels and IChat.Channels.PaintMessage then
+    IChat.Channels.PaintMessage(entry)
   end
 end
 
@@ -174,12 +111,6 @@ frame:SetScript("OnEvent", function(_, event, name)
     return
   end
   IChat.EnsureDB()
-  if event == "PLAYER_LOGIN" then
-    local n = IChat.MergeInbox()
-    if n > 0 then
-      print("|cffd4a017iChat|r merged " .. n .. " GlobalChat message(s) from companion inbox.")
-    end
-  end
 end)
 
 SLASH_ICHAT1 = "/ichat"
@@ -189,18 +120,12 @@ SlashCmdList["ICHAT"] = function(msg)
   cmd = cmd and cmd:lower() or ""
 
   if cmd == "" or cmd == "help" then
-    print("|cffd4a017iChat|r Stage 1 — GlobalChat (no separate window)")
-    print("  Chat settings → GlobalChat: enable Global Whisper/Room/Say/Trade/City")
-    print("  /gsay /gtrade /gcity <msg>")
-    print("  /groom [roomname] <msg>   (default room: " .. IChat.GetRoomName() .. ")")
-    print("  /gwhisper <Player-Realm> <msg>")
-    print("  /ichat sync — flush outbox / load inbox (required companion bridge)")
-    print("  /ichat room <name> — set default Global Room name")
-    print("  Companion + relay required for cross-region delivery.")
-    return
-  end
-  if cmd == "sync" then
-    IChat.Sync()
+    print("|cffd4a017iChat|r Stage 1 — realtime GlobalChat (no sync loop)")
+    print("  Chat settings → GlobalChat: enable types / colors")
+    print("  Send in-game: /gsay /gtrade /gcity /groom /gwhisper")
+    print("  Live receive: companion GlobalChat overlay (always-connected)")
+    print("  /ichat room <name> — default Global Room name")
+    print("  Companion must watch Logs/WoWChatLog.txt (fs.watch).")
     return
   end
   if cmd == "room" then
@@ -209,6 +134,10 @@ SlashCmdList["ICHAT"] = function(msg)
     else
       IChat.SetRoomName(rest)
     end
+    return
+  end
+  if cmd == "sync" then
+    print("|cffd4a017iChat|r /ichat sync was removed — transport is event-driven (chatlog + overlay), not /reload polling.")
     return
   end
   print("|cffd4a017iChat|r unknown command. /ichat help")

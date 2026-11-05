@@ -3,17 +3,22 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>iChat Companion (fallback)</title>
+  <title>iChat GlobalChat</title>
   <style>
     :root {
-      --bg: #12151c;
-      --panel: #1a2030;
+      --bg: #0c0e14;
+      --panel: #151a24;
       --ink: #e8ecf4;
       --muted: #8b95a8;
       --accent: #d4a017;
       --line: #2a3348;
       --ok: #3dba7a;
       --bad: #d45454;
+      --say: #e8e8e8;
+      --trade: #ffc04d;
+      --city: #4dff8c;
+      --room: #66d9ff;
+      --whisper: #ff80ff;
     }
     * { box-sizing: border-box; }
     body {
@@ -21,39 +26,42 @@
       min-height: 100vh;
       font-family: "Segoe UI", "Trebuchet MS", sans-serif;
       background:
-        radial-gradient(ellipse 80% 50% at 10% -10%, #2a3a28 0%, transparent 55%),
-        radial-gradient(ellipse 60% 40% at 100% 0%, #3a2a18 0%, transparent 50%),
+        radial-gradient(ellipse 70% 45% at 0% 0%, #243020 0%, transparent 55%),
+        radial-gradient(ellipse 50% 40% at 100% 10%, #3a2814 0%, transparent 50%),
         var(--bg);
       color: var(--ink);
       display: grid;
       place-items: center;
-      padding: 1.5rem;
+      padding: 1.25rem;
     }
     main {
-      width: min(760px, 100%);
-      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      width: min(780px, 100%);
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
-      box-shadow: 0 18px 50px rgba(0,0,0,.35);
+      box-shadow: 0 18px 50px rgba(0,0,0,.4);
+      display: flex;
+      flex-direction: column;
+      min-height: min(80vh, 640px);
     }
     header {
-      padding: 1rem 1.25rem;
+      padding: .9rem 1.15rem;
       border-bottom: 1px solid var(--line);
       display: flex;
       justify-content: space-between;
       align-items: baseline;
       gap: 1rem;
     }
-    h1 { margin: 0; font-size: 1.15rem; letter-spacing: .04em; color: var(--accent); }
-    #status { font-size: .85rem; color: var(--muted); }
+    h1 { margin: 0; font-size: 1.1rem; letter-spacing: .06em; color: var(--accent); }
+    #status { font-size: .82rem; color: var(--muted); }
     #status.ok { color: var(--ok); }
     #status.bad { color: var(--bad); }
     .toolbar {
       display: grid;
-      grid-template-columns: 1.2fr 1fr 1fr auto;
-      gap: .5rem;
-      padding: .75rem 1.25rem;
+      grid-template-columns: 1.3fr 1fr 1fr auto;
+      gap: .45rem;
+      padding: .7rem 1.15rem;
       border-bottom: 1px solid var(--line);
     }
     input, select, button {
@@ -62,7 +70,7 @@
       border: 1px solid var(--line);
       background: #0f131c;
       color: var(--ink);
-      padding: .55rem .7rem;
+      padding: .5rem .65rem;
     }
     button {
       background: var(--accent);
@@ -72,26 +80,31 @@
       cursor: pointer;
     }
     #log {
-      height: min(48vh, 400px);
+      flex: 1;
       overflow-y: auto;
-      padding: 1rem 1.25rem;
+      padding: 1rem 1.15rem;
       display: flex;
       flex-direction: column;
-      gap: .65rem;
+      gap: .55rem;
+      background: rgba(0,0,0,.18);
     }
-    .msg { font-size: .95rem; line-height: 1.35; }
-    .msg .meta { font-size: .75rem; color: var(--muted); margin-bottom: .15rem; }
-    .msg .sender { color: var(--accent); font-weight: 600; }
+    .msg { font-size: .92rem; line-height: 1.35; }
+    .msg .meta { font-size: .72rem; color: var(--muted); margin-bottom: .12rem; }
+    .msg .ch-say { color: var(--say); }
+    .msg .ch-trade { color: var(--trade); }
+    .msg .ch-city { color: var(--city); }
+    .msg .ch-room { color: var(--room); }
+    .msg .ch-whisper { color: var(--whisper); }
     .compose {
       display: grid;
       grid-template-columns: 1fr auto;
-      gap: .5rem;
-      padding: .75rem 1.25rem .5rem;
+      gap: .45rem;
+      padding: .75rem 1.15rem .4rem;
       border-top: 1px solid var(--line);
     }
     .hint {
-      padding: 0 1.25rem 1rem;
-      font-size: .8rem;
+      padding: 0 1.15rem 1rem;
+      font-size: .78rem;
       color: var(--muted);
     }
   </style>
@@ -99,7 +112,7 @@
 <body>
   <main>
     <header>
-      <h1>iChat companion (fallback)</h1>
+      <h1>GlobalChat</h1>
       <div id="status" class="bad">Disconnected</div>
     </header>
     <div class="toolbar">
@@ -111,17 +124,17 @@
         <option value="room">Global Room</option>
         <option value="whisper">Global Whisper</option>
       </select>
-      <input id="room" placeholder="room name / whisper target" />
+      <input id="room" placeholder="room / whisper target" />
       <button id="joinBtn" type="button">Join</button>
     </div>
     <div id="log" aria-live="polite"></div>
     <form class="compose" id="form">
-      <input id="text" placeholder="Message…" autocomplete="off" maxlength="500" />
+      <input id="text" placeholder="Message (realtime)…" autocomplete="off" maxlength="500" />
       <button type="submit">Send</button>
     </form>
     <p class="hint">
-      Stage 1 primary UX is in-game: Chat settings → <strong>GlobalChat</strong>, then /gsay /gtrade /gcity /groom /gwhisper.
-      This page is a realtime fallback while the addon Syncs via SavedVariables / Inbox.lua.
+      Live receive/send surface (WebSocket). In-game <code>/gsay</code> etc. reach the relay via chatlog
+      <code>fs.watch</code> — no timed SavedVariables sync. Chat settings in WoW still configure GlobalChat types.
     </p>
   </main>
   <script>
@@ -153,14 +166,19 @@
       const key = m.id || (m.ts + "|" + m.sender + "|" + m.text);
       if (seen.has(key)) return;
       seen.add(key);
+      const ch = m.channel || "say";
       const div = document.createElement("div");
       div.className = "msg";
       div.innerHTML =
-        '<div class="meta"><span class="sender"></span> · <span class="ch"></span> · <span class="ts"></span></div>' +
+        '<div class="meta"><span class="label"></span> · <span class="sender"></span> · <span class="ts"></span></div>' +
         '<div class="body"></div>';
+      const label = div.querySelector(".label");
+      label.className = "label ch-" + ch;
+      let title = "Global " + ch.charAt(0).toUpperCase() + ch.slice(1);
+      if (m.target) title += " → " + m.target;
+      if (m.roomName) title += " #" + m.roomName;
+      label.textContent = title;
       div.querySelector(".sender").textContent = m.sender || "?";
-      const label = (m.channel || "?") + (m.target ? " → " + m.target : "") + (m.roomName ? " #" + m.roomName : "");
-      div.querySelector(".ch").textContent = label;
       div.querySelector(".ts").textContent = fmtTime(m.ts);
       div.querySelector(".body").textContent = m.text || "";
       logEl.appendChild(div);
@@ -178,18 +196,17 @@
       ws = new WebSocket(proto + "//" + location.host);
       ws.onopen = () => {
         const ch = channelEl.value;
-        const room = roomFor(ch, roomEl.value);
-        setStatus(true, "Connected · " + ch);
+        setStatus(true, "Live · " + ch);
         ws.send(JSON.stringify({
           type: "join",
-          room,
+          room: roomFor(ch, roomEl.value),
           channel: ch,
           sender: senderEl.value,
         }));
       };
       ws.onclose = () => {
         setStatus(false, "Reconnecting…");
-        setTimeout(connect, 1500);
+        setTimeout(connect, 1200);
       };
       ws.onmessage = (ev) => {
         let msg;
@@ -197,11 +214,11 @@
         if (msg.type === "msg") addMsg(msg);
         if (msg.type === "status") {
           setStatus(!!msg.connected, msg.connected
-            ? ("Connected · " + (msg.channel || channelEl.value))
+            ? ("Live · " + (msg.channel || channelEl.value))
             : "Relay down");
         }
         if (msg.type === "error") {
-          addMsg({ sender: "system", channel: "system", text: msg.message, ts: Date.now() });
+          addMsg({ sender: "system", channel: "say", text: msg.message, ts: Date.now() });
         }
       };
     }

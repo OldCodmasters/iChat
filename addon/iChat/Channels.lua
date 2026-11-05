@@ -375,7 +375,7 @@ function C.PaintMessage(msg)
 end
 
 ------------------------------------------------------------------------
--- Slash commands → outbox
+-- Slash commands → chatlog bridge (companion fs.watch)
 ------------------------------------------------------------------------
 
 local function trim(s)
@@ -451,6 +451,6 @@ boot:SetScript("OnEvent", function(_, event, name)
   if event == "PLAYER_LOGIN" then
     C.InstallChatConfigSection()
     C.ApplyToChatFrames()
-    print("|cffd4a017iChat|r GlobalChat ready — Chat settings → GlobalChat; /gsay /gtrade /gcity /groom /gwhisper; /ichat sync")
+    print("|cffd4a017iChat|r GlobalChat ready — Chat settings → GlobalChat; /gsay /gtrade /gcity /groom /gwhisper; live receive = companion overlay")
   end
 end)

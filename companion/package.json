@@ -1,8 +1,8 @@
 {
   "name": "ichat-companion",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "iChat local companion — WebSocket bridge + SavedVariables/Inbox file sync + local chat UI",
+  "description": "iChat companion — chatlog fs.watch outbound + WebSocket overlay (no poll sync)",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

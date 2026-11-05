@@ -1,78 +1,54 @@
-# iChat — Stage 1 GlobalChat
+# iChat — Stage 1 realtime GlobalChat
 
-Cross-region chat for World of Warcraft that lives in the **normal chat UI**.
-
-Players enable **GlobalChat** types under Chat settings and talk with `/gsay`, `/gtrade`, `/gcity`, `/groom`, `/gwhisper`. There is **no** separate iChat messenger window as the primary UX.
-
-WoW Lua **cannot** open sockets or HTTP. Delivery uses a **local companion** + **WebSocket relay**. Global\* types are **simulated** chat types (they look configurable like native message groups) but are **not** real Blizzard realm channels.
-
-## Stage roadmap
-
-| Stage | What | Status |
-| --- | --- | --- |
-| **1** | GlobalChat in Chat settings + companion + relay | **This repo** |
-| **2** | Discord DM bridge | **Deferred** — not implemented |
+Cross-region GlobalChat for World of Warcraft **without** timed SavedVariables / `/reload` sync loops.
 
 ## Architecture
 
 ```
-ChatFrame / slash commands  →  SavedVariables outbox  →  Companion  →  Relay
-ChatFrame ← AddMessage      ←  Inbox.lua (after Sync)  ←  Companion  ←  Relay
+/gsay (in-game) → hidden bridge channel → Logs/WoWChatLog.txt
+                              ↓ fs.watch (event-driven)
+                         Companion  ←→  WebSocket relay  ←→  other players
+                              ↓
+                    GlobalChat overlay (live send + receive)
 ```
 
 | Piece | Role |
 | --- | --- |
-| `addon/iChat` | Registers GlobalChat types, Chat settings section, slash cmds, ChatFrame output |
-| `companion/` | **Required** file bridge + reconnecting WS client (browser UI = fallback only) |
-| `server/` | Room relay (`global-say`, `global-trade`, `global-city`, `room:*`, `whisper`) |
+| `addon/iChat` | GlobalChat Chat settings + slash cmds; `LoggingChat` + bridge channel emit |
+| `companion/` | **`fs.watch` chatlog** + always-connected **overlay** (no poll loop) |
+| `server/` | Room relay |
 
-## GlobalChat channels
+**Why no ChatFrame live receive:** the sandbox cannot be pushed new Lua data without login/`/reload` or process injection. The overlay is the honest realtime receive surface. Chat settings still configure GlobalChat types/colors in WoW.
 
-| Chat settings label | Slash | Relay |
-| --- | --- | --- |
-| Global Whisper | `/gwhisper Player-Realm msg` · `/gw` | `whisper` + target filter |
-| Global Room | `/groom [name] msg` · `/gr` | `room:<name>` |
-| Global Say | `/gsay msg` · `/gs` | `global-say` |
-| Global Trade | `/gtrade msg` · `/gt` | `global-trade` |
-| Global City | `/gcity msg` · `/gci` | `global-city` |
+**Residual limit:** some clients buffer `WoWChatLog.txt`; in-game outbound then waits on Blizzard’s flush. Overlay send/receive stays sub-second.
 
-Open **Chat** settings (chat window gear / Esc → Options → Chat) and use the **GlobalChat** section to toggle which chat tabs show each type and set colors.
+## Player flow
 
-### API limits (honest)
+1. Start relay + companion; open `http://127.0.0.1:7712` (GlobalChat overlay).
+2. Set `wowChatLogPath` in `companion/config.json` to `.../Logs/WoWChatLog.txt`.
+3. Install `addon/iChat`; enable GlobalChat types under Chat settings.
+4. **Realtime:** chat in the overlay.
+5. **From game:** `/gsay` `/gtrade` `/gcity` `/groom` `/gwhisper` — companion picks them up via chatlog watch (no `/ichat sync`).
 
-- Cannot create true cross-region Blizzard channels.
-- Cannot fire real `CHAT_MSG_SAY` / Trade events for other regions.
-- Custom types need SavedVariables persistence hooks (Blizzard CVars ignore unknown types).
-- In-game delivery still needs **`/ichat sync`** (`/reload`) so the companion can read the outbox / the addon can load `Inbox.lua`. Companion WebSocket traffic itself is realtime.
-
-## Quick start (no WoW)
-
-Node.js 18+.
+## Quick start (smoke without WoW)
 
 ```bash
 cd server && npm install && npm start
-# ws://127.0.0.1:7711
-
-cd companion && cp config.example.json config.json && npm install && npm start
-# fallback UI http://127.0.0.1:7712
+cd companion
+cp config.example.json config.json
+# optional: "wowChatLogPath": "/tmp/WoWChatLog.txt"
+npm install && npm start
+# overlay: http://127.0.0.1:7712
+# inject a fake in-game line:
+curl -s -X POST http://127.0.0.1:7712/api/debug/inject-chatlog \
+  -H 'content-type: application/json' \
+  -d '{"channel":"say","text":"hello from chatlog","sender":"Amin-Realm"}'
 ```
 
-## Load the addon
+## ToS
 
-1. Copy `addon/iChat` → `World of Warcraft/_retail_/Interface/AddOns/iChat` (or Classic `_classic_era_` / `_classic_`).
-2. Enable **iChat** at character select.
-3. Point companion `config.json` at:
-   - `wowAddonPath`: `.../Interface/AddOns/iChat`
-   - `wowSavedVariablesPath`: `.../WTF/Account/<ACCOUNT>/SavedVariables/iChat.lua` (appears after first Sync/logout)
-4. In-game: enable GlobalChat types in Chat settings; send with `/gsay` etc.; **`/ichat sync`** to flush/load.
+Companion uses file watch + overlay only (no memory injection). Still third-party software — residual account risk. Review Blizzard EULA before shipping.
 
-## Blizzard policy / ToS
+## Stage 2
 
-- Addon sandbox usage is normal.
-- Companion + relay are third-party (not Blizzard-approved). Residual account risk.
-- Stage 1 avoids memory reading, injection, and input automation.
-- Review current EULA/ToS before distributing. Not legal advice.
-
-## License
-
-MVP scaffold — add a license before public redistribution.
+Discord DM bridge — deferred; not in this tree.

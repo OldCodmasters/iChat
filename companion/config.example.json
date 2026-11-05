@@ -4,9 +4,7 @@
   "sender": "Player-Realm",
   "defaultRoom": "global-say",
   "defaultChannel": "say",
-  "wowAddonPath": "",
-  "wowSavedVariablesPath": "",
-  "pollMs": 1500,
+  "wowChatLogPath": "",
   "joinRooms": ["global-say", "global-trade", "global-city", "whisper", "room:general"],
-  "notes": "Stage 1 primary UX is in-game GlobalChat (Chat settings). This companion is required for relay I/O; the local browser UI is a realtime fallback / Sync helper. Set wowAddonPath to .../Interface/AddOns/iChat and wowSavedVariablesPath to .../WTF/Account/<ACCOUNT>/SavedVariables/iChat.lua after the addon has flushed once."
+  "notes": "Set wowChatLogPath to World of Warcraft/_retail_/Logs/WoWChatLog.txt (or Classic equivalent). Companion uses fs.watch — no SavedVariables poll. Overlay at http://127.0.0.1:7712 is the live receive/send surface. In-game /gsay etc. emit via the hidden iChatX bridge channel into that log."
 }
