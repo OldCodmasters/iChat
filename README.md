@@ -4,22 +4,90 @@ Cross-region chat for World of Warcraft. Players configure **GlobalChat** types 
 
 Realtime transport landed in [PR #2](https://github.com/OldCodmasters/iChat/pull/2) (merged). This tree’s docs match that architecture.
 
-## Architecture
+## Methodology / Architecture
 
+**Why a companion exists:** WoW addon Lua is sandboxed — no sockets, HTTP, or WebSockets. Cross-region chat cannot ride Blizzard’s realm chat. A local companion process bridges the game to a WebSocket relay.
+
+**How players use it:** GlobalChat types live in normal **Chat settings** (not a standalone messenger). Send with `/gsay`, `/gtrade`, `/gcity`, `/groom`, `/gwhisper`. **Live receive** is the companion **overlay** (ChatFrame cannot be pushed inbound messages without `/reload` or process injection).
+
+**What we refuse:** timed SavedVariables / Inbox / `/ichat sync` / poll-every-N-seconds loops. Outbound from the game is **event-driven** (`fs.watch` on the chat log). Overlay ↔ relay is always-connected WebSocket.
+
+### End-to-end realtime flow
+
+```mermaid
+flowchart LR
+  subgraph PlayerA["Player A PC"]
+    A1["WoW + iChat addon<br/>Chat settings: GlobalChat"]
+    A2["Logs/WoWChatLog.txt"]
+    A3["Companion<br/>fs.watch + overlay"]
+    A1 -->|"1. /gsay → iChatX<br/>LoggingChat"| A2
+    A2 -->|"2. fs.watch<br/>event-driven"| A3
+  end
+
+  R["3. WebSocket relay<br/>server/"]
+
+  subgraph PlayerB["Player B PC"]
+    B3["Companion overlay<br/>live receive/send"]
+    B1["WoW + iChat addon<br/>Chat settings only"]
+  end
+
+  A3 <-->|"WS join/msg"| R
+  R <-->|"4. fan-out"| B3
+  B1 -.->|"optional /gsay<br/>via own chatlog"| B3
 ```
-In-game /gsay …
-    → hidden bridge channel (iChatX) + LoggingChat
-    → Logs/WoWChatLog.txt
-    → companion fs.watch (event-driven, not setInterval)
-    → WebSocket relay
-    → other players’ companions
-    → GlobalChat overlay (live send + receive)
+
+*Caption: Send path is game → chatlog → companion watch → relay. Receive path is relay → companion **overlay** (not ChatFrame injection). Same on every region/PC.*
+
+### Sequence (one Global Say)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as Player (ChatFrame / slash)
+  participant Addon as iChat addon
+  participant Log as WoWChatLog.txt
+  participant Comp as Companion
+  participant Relay as WebSocket relay
+  participant Peer as Other companions
+
+  U->>Addon: /gsay hello
+  Note over Addon: Chat settings GlobalChat enabled
+  Addon->>Addon: SendChatMessage on hidden iChatX
+  Addon->>Log: LoggingChat append |iC|1|say||hello
+  Addon->>U: local outgoing echo in ChatFrame
+  Log-->>Comp: fs.watch (OS file event)
+  Comp->>Relay: msg channel=say room=global-say
+  Relay->>Peer: broadcast
+  Relay->>Comp: echo / fan-in
+  Comp->>Comp: overlay shows message live
+  Note over U,Peer: No SavedVariables poll, no Inbox.lua, no /reload sync
+```
+
+### Components
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Stage 1 methodology                             │
+├───────────────┬─────────────────────────────┬───────────────────────────┤
+│  WoW client   │  Local companion (required) │  Relay (shared)           │
+│  addon/iChat  │  companion/                 │  server/                  │
+├───────────────┼─────────────────────────────┼───────────────────────────┤
+│ Chat settings │ fs.watch WoWChatLog.txt     │ WebSocket rooms           │
+│ GlobalChat    │ always-on overlay UI        │ global-say / trade / …    │
+│ /gsay … slash │ WS client ↔ relay           │ whisper target filter     │
+│ LoggingChat + │ NO SavedVariables poll      │                           │
+│ iChatX bridge │                             │                           │
+│ IChatDB=prefs │ Live RECEIVE surface        │                           │
+│ only          │                             │                           │
+└───────────────┴─────────────────────────────┴───────────────────────────┘
+        │ chatlog append              │ WS                    │
+        └─────────────────────────────┴────────────────────────┘
 ```
 
 | Piece | Role |
 | --- | --- |
-| [`addon/iChat`](addon/iChat) | GlobalChat Chat settings + slash cmds; enables chat logging; emits bridge lines |
-| [`companion/`](companion) | **`fs.watch` on chatlog** + always-connected **overlay** at `http://127.0.0.1:7712` |
+| [`addon/iChat`](addon/iChat) | GlobalChat Chat settings + slash cmds; enables chat logging; emits bridge lines; outgoing ChatFrame echo |
+| [`companion/`](companion) | **`fs.watch` chatlog** + always-connected **overlay** at `http://127.0.0.1:7712` |
 | [`server/`](server) | Minimal WebSocket room relay |
 
 ### What is *not* the transport path
