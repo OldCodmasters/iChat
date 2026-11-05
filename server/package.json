@@ -2,7 +2,7 @@
   "name": "ichat-server",
   "version": "0.1.0",
   "private": true,
-  "description": "iChat WebSocket room relay — cross-region message fan-out",
+  "description": "iChat WebSocket room relay for realtime GlobalChat (companions connect here; no WoW file polling)",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
