@@ -26,3 +26,6 @@ Env overrides: `ICHAT_PORT`, `ICHAT_HOST`.
 Clients send JSON: `join`, `msg`, `ping`. See root [README.md](../README.md).
 
 This process does **not** poll WoW files; companions connect here for realtime fan-out.
+
+Releases: run the relay from a GitHub Release source tag (see [`docs/releasing.md`](../docs/releasing.md)).
+

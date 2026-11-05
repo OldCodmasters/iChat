@@ -1,0 +1,57 @@
+# Create a GitHub Release when a version tag is pushed.
+# Tag format: v0.3.0 (must match SemVer-ish vMAJOR.MINOR.PATCH)
+#
+# Ships:
+#   - iChat-addon-<tag>.zip  → extract into Interface/AddOns/
+#   - Source archive (GitHub default) includes companion/ + server/
+#
+# Does not publish npm packages or CurseForge (out of scope for Stage 1).
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build addon zip
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          # Zip contents should expand to a single folder named iChat/
+          (cd addon && zip -r "../dist/iChat-addon-${TAG}.zip" iChat -x "*.DS_Store")
+          ls -la dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: iChat ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            ## iChat ${{ github.ref_name }}
+
+            Stage 1 ships **three pieces** (realtime GlobalChat — chatlog watch + overlay, not poll sync):
+
+            | Artifact | What to do |
+            | --- | --- |
+            | **iChat-addon-*.zip** (attached) | Unzip into `World of Warcraft/_retail_/Interface/AddOns/` (or Classic AddOns path) so you have `Interface/AddOns/iChat/` |
+            | **companion/** (in source tag) | `cd companion && cp config.example.json config.json && npm i && npm start` — set `wowChatLogPath` + `sender` |
+            | **server/** (in source tag) | `cd server && npm i && npm start` — relay at `ws://127.0.0.1:7711` |
+
+            Live receive is the companion overlay (`http://127.0.0.1:7712`). See README.md for ChatFrame limits and install details.
+          files: |
+            dist/iChat-addon-${{ github.ref_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

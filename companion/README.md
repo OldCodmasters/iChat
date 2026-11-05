@@ -29,4 +29,7 @@ npm start
 - Not a timed outbox scraper.
 - Overlay is the **primary live receive surface** (ChatFrame cannot be pushed live without injection).
 
+Releases: tagged GitHub Releases include this tree; run companion from the tag (see [`docs/releasing.md`](../docs/releasing.md)).
+
 See the repo root [README.md](../README.md).
+

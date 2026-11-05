@@ -118,7 +118,26 @@ TOC: `## Interface: 120105, 11509, 50504` (Retail primary; Classic Era / MoP Cla
 
 Discord DM bridge — **deferred**. Not implemented in this tree.
 
+## Reviews / protected `main`
+
+Merges to `main` must be reviewed. Code owner: **@OldCodmasters** (Amin), declared in [`.github/CODEOWNERS`](.github/CODEOWNERS).
+
+How to add more reviewers and the **GitHub Settings clicks** to enforce required Code Owner reviews: [`CONTRIBUTING.md`](CONTRIBUTING.md).  
+(Repository rulesets require admin UI; automation cannot enable them with the current token.)
+
+## Releasing
+
+Stage 1 ships **addon + companion + server** via GitHub Releases (not CurseForge/npm):
+
+1. Tag `main`: `git tag -a v0.3.0 -m "iChat v0.3.0" && git push origin v0.3.0`
+2. Workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) attaches **`iChat-addon-<tag>.zip`** and publishes release notes for running `companion/` + `server/` from that tag.
+3. Install addon from the zip; run relay + companion as in [Install & run](#install--run).
+
+Full steps: [`docs/releasing.md`](docs/releasing.md).
+
 ## More detail
 
 - Companion: [`companion/README.md`](companion/README.md)
 - Relay: [`server/README.md`](server/README.md)
+- Contributing / reviews: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+

@@ -1,0 +1,13 @@
+# Code owners for iChat
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Default owner — Amin Dehghani (@OldCodmasters).
+# GitHub automatically requests these accounts on PRs that touch matching paths.
+# For *required* approval before merge, enable “Require review from Code Owners”
+# on the main branch ruleset (see CONTRIBUTING.md → Branch protection).
+#
+# Add more reviewers by appending @username on the same line (space-separated):
+#   * @OldCodmasters @OtherReviewer
+# Or add path-specific lines below (last matching pattern wins).
+
+* @OldCodmasters
