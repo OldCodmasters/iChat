@@ -1,8 +1,9 @@
 --[[
   iChat core — GlobalChat send via chatlog bridge (event-driven companion watch).
 
-  Live receive is the companion overlay (ChatFrame cannot be pushed without
-  /reload or process injection). Chat settings GlobalChat types stay in Channels.lua.
+  Live receive = companion overlay (see README). IChatDB holds Chat settings
+  prefs / room name only — not a message transport outbox.
+  Channels.lua = Chat settings + slash cmds; Bridge.lua = chatlog emit.
 ]]
 
 IChat = IChat or {}
@@ -120,12 +121,12 @@ SlashCmdList["ICHAT"] = function(msg)
   cmd = cmd and cmd:lower() or ""
 
   if cmd == "" or cmd == "help" then
-    print("|cffd4a017iChat|r Stage 1 — realtime GlobalChat (no sync loop)")
+    print("|cffd4a017iChat|r realtime GlobalChat — no poll/sync loop")
     print("  Chat settings → GlobalChat: enable types / colors")
     print("  Send in-game: /gsay /gtrade /gcity /groom /gwhisper")
-    print("  Live receive: companion GlobalChat overlay (always-connected)")
+    print("  Live receive: companion overlay (http://127.0.0.1:7712)")
     print("  /ichat room <name> — default Global Room name")
-    print("  Companion must watch Logs/WoWChatLog.txt (fs.watch).")
+    print("  Companion watches Logs/WoWChatLog.txt via fs.watch.")
     return
   end
   if cmd == "room" then
@@ -137,7 +138,7 @@ SlashCmdList["ICHAT"] = function(msg)
     return
   end
   if cmd == "sync" then
-    print("|cffd4a017iChat|r /ichat sync was removed — transport is event-driven (chatlog + overlay), not /reload polling.")
+    print("|cffd4a017iChat|r sync removed — use companion overlay + chatlog watch (not /reload).")
     return
   end
   print("|cffd4a017iChat|r unknown command. /ichat help")

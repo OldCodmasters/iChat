@@ -1,14 +1,15 @@
 --[[
-  GlobalChat — simulated chat types that appear in Chat settings and print
-  into the normal ChatFrame. Traffic is NOT Blizzard chat; it routes through
-  the local companion + WebSocket relay.
+  GlobalChat — simulated chat types in Chat settings + ChatFrame.
+
+  Send path: slash cmds → Bridge.lua (chatlog) → companion fs.watch → relay.
+  Live receive: companion GlobalChat overlay (ChatFrame cannot be pushed live
+  without /reload or process injection). PaintMessage is used for local
+  outgoing echo into enabled chat windows.
 
   API honesty:
-  - We register ChatTypeGroup / ChatTypeInfo and inject a GlobalChat checkbox
-    section into ChatConfig (same family of hooks as custom chat types).
-  - Blizzard will not persist unknown types in its CVars; we hook
-    Get/Add/RemoveChatWindowMessages + ChangeChatColor into IChatDB.
-  - We cannot emit real CHAT_MSG_SAY / Trade channel events cross-region.
+  - ChatTypeGroup / ChatTypeInfo + GlobalChat ChatConfig section.
+  - Unknown types are not persisted by Blizzard CVars; we store prefs in IChatDB.
+  - Not real CHAT_MSG_SAY / Trade / cross-region Blizzard channels.
 ]]
 
 IChat = IChat or {}
@@ -451,6 +452,6 @@ boot:SetScript("OnEvent", function(_, event, name)
   if event == "PLAYER_LOGIN" then
     C.InstallChatConfigSection()
     C.ApplyToChatFrames()
-    print("|cffd4a017iChat|r GlobalChat ready — Chat settings → GlobalChat; /gsay /gtrade /gcity /groom /gwhisper; live receive = companion overlay")
+    print("|cffd4a017iChat|r GlobalChat ready — Chat settings → GlobalChat; send /gsay|/gtrade|/gcity|/groom|/gwhisper; live receive = companion overlay")
   end
 end)
