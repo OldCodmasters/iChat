@@ -1,12 +1,12 @@
 ## Interface: 120105, 11509, 50504
 ## Title: iChat
-## Notes: GlobalChat — cross-region channels in Chat settings (companion + relay required).
+## Notes: GlobalChat — realtime via companion chatlog watch + overlay (no sync loop).
 ## Author: OldCodmasters
-## Version: 0.2.0
+## Version: 0.3.0
 ## SavedVariables: IChatDB
 ## X-Website: https://github.com/OldCodmasters/iChat
 ## X-Category: Chat/Communication
 
-Inbox.lua
 iChat.lua
+Bridge.lua
 Channels.lua
