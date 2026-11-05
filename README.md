@@ -1,107 +1,78 @@
-# iChat
+# iChat — Stage 1 GlobalChat
 
-Cross-region **room chat** for World of Warcraft via a **local companion** and a **WebSocket relay**.
+Cross-region chat for World of Warcraft that lives in the **normal chat UI**.
 
-WoW addon Lua **cannot** open sockets or HTTP. Native chat is realm/region-scoped. This project does **not** claim otherwise: realtime transport is outside the game client.
+Players enable **GlobalChat** types under Chat settings and talk with `/gsay`, `/gtrade`, `/gcity`, `/groom`, `/gwhisper`. There is **no** separate iChat messenger window as the primary UX.
 
-## Architecture (MVP)
+WoW Lua **cannot** open sockets or HTTP. Delivery uses a **local companion** + **WebSocket relay**. Global\* types are **simulated** chat types (they look configurable like native message groups) but are **not** real Blizzard realm channels.
+
+## Stage roadmap
+
+| Stage | What | Status |
+| --- | --- | --- |
+| **1** | GlobalChat in Chat settings + companion + relay | **This repo** |
+| **2** | Discord DM bridge | **Deferred** — not implemented |
+
+## Architecture
 
 ```
-WoW addon  --SavedVariables / Inbox.lua-->  Local companion  --WebSocket-->  Relay server
-                 (Sync /reload)              + browser UI                   (rooms)
+ChatFrame / slash commands  →  SavedVariables outbox  →  Companion  →  Relay
+ChatFrame ← AddMessage      ←  Inbox.lua (after Sync)  ←  Companion  ←  Relay
 ```
 
 | Piece | Role |
 | --- | --- |
-| `addon/iChat` | In-game UI: rooms, send/receive mirror, Sync |
-| `companion/` | **Required** bridge + **true realtime** local chat UI |
-| `server/` | Minimal room relay (broadcast JSON messages) |
+| `addon/iChat` | Registers GlobalChat types, Chat settings section, slash cmds, ChatFrame output |
+| `companion/` | **Required** file bridge + reconnecting WS client (browser UI = fallback only) |
+| `server/` | Room relay (`global-say`, `global-trade`, `global-city`, `room:*`, `whisper`) |
 
-**Realtime:** companion browser UI ↔ relay is sub-second WebSocket chat.  
-**In-game:** after send/receive batches, click **Sync** (`/reload`) so SavedVariables flush and `Inbox.lua` reloads.
+## GlobalChat channels
 
-Canonical design notes: Project store `docs/ichat-mvp-plan.md` (when working in the Cursor Project).
+| Chat settings label | Slash | Relay |
+| --- | --- | --- |
+| Global Whisper | `/gwhisper Player-Realm msg` · `/gw` | `whisper` + target filter |
+| Global Room | `/groom [name] msg` · `/gr` | `room:<name>` |
+| Global Say | `/gsay msg` · `/gs` | `global-say` |
+| Global Trade | `/gtrade msg` · `/gt` | `global-trade` |
+| Global City | `/gcity msg` · `/gci` | `global-city` |
 
-## Targets
+Open **Chat** settings (chat window gear / Esc → Options → Chat) and use the **GlobalChat** section to toggle which chat tabs show each type and set colors.
 
-- **Retail** Interface `120105` (primary)
-- **Classic Era** `11509` and **MoP Classic** `50504` (same scaffold)
+### API limits (honest)
 
-## Quick start (no WoW required)
+- Cannot create true cross-region Blizzard channels.
+- Cannot fire real `CHAT_MSG_SAY` / Trade events for other regions.
+- Custom types need SavedVariables persistence hooks (Blizzard CVars ignore unknown types).
+- In-game delivery still needs **`/ichat sync`** (`/reload`) so the companion can read the outbox / the addon can load `Inbox.lua`. Companion WebSocket traffic itself is realtime.
 
-Needs Node.js 18+.
+## Quick start (no WoW)
+
+Node.js 18+.
 
 ```bash
-# Terminal 1 — relay
 cd server && npm install && npm start
-# ws://127.0.0.1:7711   health: http://127.0.0.1:7711/health
+# ws://127.0.0.1:7711
 
-# Terminal 2 — companion
-cd companion
-cp config.example.json config.json   # optional; defaults work for browser-only
-npm install && npm start
-# open http://127.0.0.1:7712
+cd companion && cp config.example.json config.json && npm install && npm start
+# fallback UI http://127.0.0.1:7712
 ```
 
-Open the companion UI in two browser profiles/windows, join the same room, send messages — everyone should see sender, room, and timestamp live.
+## Load the addon
 
-## Load the addon in WoW
+1. Copy `addon/iChat` → `World of Warcraft/_retail_/Interface/AddOns/iChat` (or Classic `_classic_era_` / `_classic_`).
+2. Enable **iChat** at character select.
+3. Point companion `config.json` at:
+   - `wowAddonPath`: `.../Interface/AddOns/iChat`
+   - `wowSavedVariablesPath`: `.../WTF/Account/<ACCOUNT>/SavedVariables/iChat.lua` (appears after first Sync/logout)
+4. In-game: enable GlobalChat types in Chat settings; send with `/gsay` etc.; **`/ichat sync`** to flush/load.
 
-1. Copy the folder `addon/iChat` to:
-   - Retail: `World of Warcraft/_retail_/Interface/AddOns/iChat`
-   - Classic Era: `World of Warcraft/_classic_era_/Interface/AddOns/iChat`
-   - MoP Classic: `World of Warcraft/_classic_/Interface/AddOns/iChat` (path may vary by install)
-2. Restart the client or wait until AddOns refresh at character select; enable **iChat**.
-3. In-game: `/ichat` opens the window; `/ichat help` lists commands.
-4. Point the companion at your install (`companion/config.json`):
+## Blizzard policy / ToS
 
-```json
-{
-  "relayUrl": "ws://127.0.0.1:7711",
-  "httpPort": 7712,
-  "sender": "YourName-YourRealm",
-  "defaultRoom": "global",
-  "wowAddonPath": "C:/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns/iChat",
-  "wowSavedVariablesPath": "C:/Program Files (x86)/World of Warcraft/_retail_/WTF/Account/ACCOUNTNAME/SavedVariables/iChat.lua"
-}
-```
-
-`wowSavedVariablesPath` appears only after the addon has run and you have logged out or Synced once.
-
-### In-game flow
-
-1. Set room → **Join** (or `/ichat room name`).
-2. Type a message → **Send** (queued into `IChatDB.outbox`).
-3. Click **Sync** so WoW writes SavedVariables; companion reads the outbox and publishes to the relay.
-4. When others chat, companion updates `Inbox.lua`; **Sync** again to pull messages into the addon UI.
-
-Day-to-day, use the companion browser UI for live conversation; use the addon as the in-game mirror.
-
-## Protocol (JSON over WebSocket)
-
-```json
-{ "type": "join", "room": "global", "sender": "Amin-Realm" }
-{ "type": "msg", "room": "global", "sender": "Amin-Realm", "text": "hello", "ts": 1730812345678 }
-```
-
-Relay echoes `msg` to everyone in the room (including a short history on join). Companion reconnects with exponential backoff.
-
-## Blizzard policy / ToS — read before shipping
-
-- The **addon** uses only the official sandbox API (normal addon model).
-- The **companion + external relay** are third-party software. Blizzard does **not** certify companions. File-based bridges (similar spirit to WeakAuras Companion / TSM desktop tools) are common, but **not** a policy guarantee.
-- This MVP **does not** read game memory, inject code into the client, or automate input — by design, to stay on the lower-risk side of companion patterns.
-- Running a global chat relay can still conflict with community standards or be used for abuse; if you host a public relay, you own moderation and legal exposure.
-- **Account action risk is real** for any third-party tool. Review the current Blizzard EULA / ToS yourself before distributing iChat widely. This README is not legal advice.
-
-## Repo layout
-
-```
-addon/iChat/     WoW addon (TOC + Lua)
-companion/       Local bridge + http://127.0.0.1:7712 UI
-server/          WebSocket room relay
-```
+- Addon sandbox usage is normal.
+- Companion + relay are third-party (not Blizzard-approved). Residual account risk.
+- Stage 1 avoids memory reading, injection, and input automation.
+- Review current EULA/ToS before distributing. Not legal advice.
 
 ## License
 
-MVP scaffold — add a license before a public release if you redistribute.
+MVP scaffold — add a license before public redistribution.

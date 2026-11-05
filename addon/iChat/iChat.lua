@@ -1,16 +1,13 @@
 --[[
-  iChat core — queues outbound messages into SavedVariables and merges
-  companion-written IChatInbox after Sync (/reload).
+  iChat core — GlobalChat outbox/inbox + Sync.
 
-  The WoW Lua sandbox cannot open sockets or HTTP. Realtime transport lives
-  in the local companion + relay. See README.md.
+  Primary UX is Channels.lua (native ChatFrame + Chat settings).
+  This file owns SavedVariables bridging to the companion.
 ]]
 
-local ADDON = ...
 IChat = IChat or {}
 
 local function now()
-  -- GetServerTime is unix seconds on modern clients; fall back to time().
   if GetServerTime then
     return GetServerTime() * 1000
   end
@@ -27,65 +24,41 @@ function IChat.EnsureDB()
   if type(IChatDB) ~= "table" then
     IChatDB = {}
   end
-  IChatDB.room = IChatDB.room or "global"
-  IChatDB.messages = IChatDB.messages or {}
+  IChatDB.roomName = IChatDB.roomName or "general"
   IChatDB.outbox = IChatDB.outbox or {}
   IChatDB.seenInbox = IChatDB.seenInbox or {}
+  IChatDB.chat = IChatDB.chat or {}
 end
 
-function IChat.TrimMessages()
+function IChat.GetRoomName()
   IChat.EnsureDB()
-  while #IChatDB.messages > 150 do
-    table.remove(IChatDB.messages, 1)
+  return IChatDB.roomName or "general"
+end
+
+function IChat.SetRoomName(name)
+  IChat.EnsureDB()
+  name = tostring(name or "general"):lower():gsub("%s+", "-"):sub(1, 64)
+  if name == "" then
+    name = "general"
   end
+  IChatDB.roomName = name
+  print("|cffd4a017iChat|r Global Room set to |cffffffff" .. name .. "|r")
+end
+
+function IChat.TrimOutbox()
+  IChat.EnsureDB()
   while #IChatDB.outbox > 50 do
     table.remove(IChatDB.outbox, 1)
   end
 end
 
-function IChat.AddLocalMessage(entry)
+--- Queue a GlobalChat message for the companion.
+-- @param kind whisper|room|say|trade|city
+-- @param text message body
+-- @param opts optional { target=, roomName= }
+function IChat.SendChannel(kind, text, opts)
   IChat.EnsureDB()
-  table.insert(IChatDB.messages, entry)
-  IChat.TrimMessages()
-  if IChat.UI and IChat.UI.Refresh then
-    IChat.UI.Refresh()
-  end
-end
-
-function IChat.MergeInbox()
-  IChat.EnsureDB()
-  if type(IChatInbox) ~= "table" then
-    return 0
-  end
-  local added = 0
-  for _, m in ipairs(IChatInbox) do
-    local id = m.id or (tostring(m.ts or 0) .. "|" .. tostring(m.sender) .. "|" .. tostring(m.text))
-    if not IChatDB.seenInbox[id] then
-      IChatDB.seenInbox[id] = true
-      IChat.AddLocalMessage({
-        id = id,
-        room = m.room or IChatDB.room,
-        sender = m.sender or "?",
-        text = m.text or "",
-        ts = tonumber(m.ts) or now(),
-        source = "inbox",
-      })
-      added = added + 1
-    end
-  end
-  -- Bound seen map
-  local n = 0
-  for _ in pairs(IChatDB.seenInbox) do
-    n = n + 1
-  end
-  if n > 500 then
-    IChatDB.seenInbox = {}
-  end
-  return added
-end
-
-function IChat.Send(text)
-  IChat.EnsureDB()
+  opts = opts or {}
   text = strtrim(text or "")
   if text == "" then
     return
@@ -97,38 +70,95 @@ function IChat.Send(text)
   local id = tostring(now()) .. "-" .. tostring(math.random(1000, 9999))
   local entry = {
     id = id,
-    room = IChatDB.room or "global",
+    channel = kind,
+    room = IChat.RelayRoomFor(kind, opts),
+    roomName = opts.roomName or (kind == "room" and IChat.GetRoomName() or nil),
+    target = opts.target,
     sender = playerLabel(),
     text = text,
     ts = now(),
-    source = "local",
   }
 
   table.insert(IChatDB.outbox, {
-    id = id,
+    id = entry.id,
+    channel = entry.channel,
     room = entry.room,
-    text = text,
+    roomName = entry.roomName,
+    target = entry.target,
+    text = entry.text,
     ts = entry.ts,
   })
-  IChat.AddLocalMessage(entry)
-  print("|cffd4a017iChat|r queued for companion. Click |cffffffffSync|r so SavedVariables flush to disk.")
+  IChat.TrimOutbox()
+
+  -- Echo locally immediately (optimistic UI).
+  if IChat.Channels and IChat.Channels.PaintMessage then
+    IChat.Channels.PaintMessage(entry)
+  end
+
+  print("|cffd4a017iChat|r queued |cffffffff" .. kind .. "|r — click Sync (/ichat sync) so the companion can send it.")
 end
 
-function IChat.SetRoom(room)
+function IChat.RelayRoomFor(kind, opts)
+  opts = opts or {}
+  if kind == "whisper" then
+    return "whisper"
+  end
+  if kind == "room" then
+    local n = opts.roomName or IChat.GetRoomName()
+    return "room:" .. tostring(n):lower()
+  end
+  if kind == "trade" then
+    return "global-trade"
+  end
+  if kind == "city" then
+    return "global-city"
+  end
+  return "global-say"
+end
+
+function IChat.MergeInbox()
   IChat.EnsureDB()
-  room = strtrim(room or "")
-  if room == "" then
-    room = "global"
+  if type(IChatInbox) ~= "table" then
+    return 0
   end
-  IChatDB.room = room:lower():sub(1, 64)
-  print("|cffd4a017iChat|r room set to |cffffffff#" .. IChatDB.room .. "|r")
-  if IChat.UI and IChat.UI.Refresh then
-    IChat.UI.Refresh()
+  local added = 0
+  local me = string.lower(playerLabel())
+  for _, m in ipairs(IChatInbox) do
+    local id = m.id or (tostring(m.ts or 0) .. "|" .. tostring(m.sender) .. "|" .. tostring(m.text))
+    if not IChatDB.seenInbox[id] then
+      IChatDB.seenInbox[id] = true
+      local channel = m.channel or "say"
+      -- Whisper filter: show if we are sender or target.
+      if channel == "whisper" and m.target then
+        local t = string.lower(tostring(m.target))
+        local s = string.lower(tostring(m.sender or ""))
+        if t ~= me and s ~= me then
+          -- still mark seen; not for this character
+        else
+          if IChat.Channels then
+            IChat.Channels.PaintMessage(m)
+          end
+          added = added + 1
+        end
+      else
+        if IChat.Channels then
+          IChat.Channels.PaintMessage(m)
+        end
+        added = added + 1
+      end
+    end
   end
+  local n = 0
+  for _ in pairs(IChatDB.seenInbox) do
+    n = n + 1
+  end
+  if n > 500 then
+    IChatDB.seenInbox = {}
+  end
+  return added
 end
 
 function IChat.Sync()
-  -- Hardware-event gated on modern clients when called from a button OnClick.
   if C_UI and C_UI.Reload then
     C_UI.Reload()
   else
@@ -143,14 +173,11 @@ frame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name ~= "iChat" then
     return
   end
-  if event == "ADDON_LOADED" or event == "PLAYER_LOGIN" then
-    IChat.EnsureDB()
+  IChat.EnsureDB()
+  if event == "PLAYER_LOGIN" then
     local n = IChat.MergeInbox()
-    if event == "PLAYER_LOGIN" then
-      print("|cffd4a017iChat|r loaded. /ichat — companion required for cross-region relay.")
-      if n > 0 then
-        print("|cffd4a017iChat|r merged " .. n .. " inbox message(s).")
-      end
+    if n > 0 then
+      print("|cffd4a017iChat|r merged " .. n .. " GlobalChat message(s) from companion inbox.")
     end
   end
 end)
@@ -161,32 +188,28 @@ SlashCmdList["ICHAT"] = function(msg)
   local cmd, rest = msg:match("^(%S+)%s*(.*)$")
   cmd = cmd and cmd:lower() or ""
 
-  if cmd == "" or cmd == "show" then
-    if IChat.UI and IChat.UI.Toggle then
-      IChat.UI.Toggle()
-    end
-    return
-  end
-  if cmd == "room" then
-    IChat.SetRoom(rest)
-    return
-  end
-  if cmd == "send" then
-    IChat.Send(rest)
+  if cmd == "" or cmd == "help" then
+    print("|cffd4a017iChat|r Stage 1 — GlobalChat (no separate window)")
+    print("  Chat settings → GlobalChat: enable Global Whisper/Room/Say/Trade/City")
+    print("  /gsay /gtrade /gcity <msg>")
+    print("  /groom [roomname] <msg>   (default room: " .. IChat.GetRoomName() .. ")")
+    print("  /gwhisper <Player-Realm> <msg>")
+    print("  /ichat sync — flush outbox / load inbox (required companion bridge)")
+    print("  /ichat room <name> — set default Global Room name")
+    print("  Companion + relay required for cross-region delivery.")
     return
   end
   if cmd == "sync" then
     IChat.Sync()
     return
   end
-  if cmd == "help" then
-    print("|cffd4a017iChat|r commands:")
-    print("  /ichat — toggle window")
-    print("  /ichat room <name> — set room")
-    print("  /ichat send <text> — queue message")
-    print("  /ichat sync — reload UI (flush outbox / load inbox)")
+  if cmd == "room" then
+    if rest == "" then
+      print("|cffd4a017iChat|r current Global Room: " .. IChat.GetRoomName())
+    else
+      IChat.SetRoomName(rest)
+    end
     return
   end
-  -- Bare text after /ichat sends
-  IChat.Send(msg)
+  print("|cffd4a017iChat|r unknown command. /ichat help")
 end

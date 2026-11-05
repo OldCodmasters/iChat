@@ -6,12 +6,11 @@ const { WebSocketServer } = require("ws");
 const PORT = Number(process.env.ICHAT_PORT || 7711);
 const HOST = process.env.ICHAT_HOST || "0.0.0.0";
 
-/** @typedef {{ room: string, sender: string, text: string, ts: number, id?: string }} ChatMsg */
+/** @typedef {{ room: string, channel?: string, roomName?: string, target?: string, sender: string, text: string, ts: number, id?: string }} ChatMsg */
 
 /** @type {Map<string, Set<import('ws').WebSocket>>} */
 const rooms = new Map();
 
-/** Keep a short ring buffer per room for late joiners (MVP convenience). */
 const HISTORY_LIMIT = 50;
 /** @type {Map<string, ChatMsg[]>} */
 const history = new Map();
@@ -23,10 +22,12 @@ function roomSet(name) {
 }
 
 function normalizeRoom(name) {
-  return String(name || "global")
-    .trim()
-    .toLowerCase()
-    .slice(0, 64) || "global";
+  return (
+    String(name || "global-say")
+      .trim()
+      .toLowerCase()
+      .slice(0, 96) || "global-say"
+  );
 }
 
 function pushHistory(room, msg) {
@@ -44,13 +45,22 @@ function broadcast(room, obj, except) {
   const set = rooms.get(room);
   if (!set) return;
   const raw = JSON.stringify(obj);
+  const isWhisper = obj.channel === "whisper" && obj.target;
+  const targetLower = isWhisper ? String(obj.target).toLowerCase() : null;
+  const senderLower = isWhisper ? String(obj.sender || "").toLowerCase() : null;
+
   for (const client of set) {
-    if (client !== except && client.readyState === 1) client.send(raw);
+    if (client === except) continue;
+    if (client.readyState !== 1) continue;
+    if (isWhisper) {
+      const name = String(client.ichatSender || "").toLowerCase();
+      if (name !== targetLower && name !== senderLower) continue;
+    }
+    client.send(raw);
   }
 }
 
 function leaveAll(ws) {
-  /** @type {Set<string>|undefined} */
   const joined = ws.ichatRooms;
   if (!joined) return;
   for (const room of joined) {
@@ -88,8 +98,8 @@ wss.on("connection", (ws) => {
   send(ws, {
     type: "hello",
     service: "ichat-relay",
-    version: 1,
-    message: "Connected. Send {type:'join', room, sender}.",
+    version: 2,
+    message: "Connected. Join rooms (global-say, global-trade, …) or whisper.",
   });
 
   ws.on("pong", () => {
@@ -119,7 +129,18 @@ wss.on("connection", (ws) => {
       ws.ichatRooms.add(room);
       send(ws, { type: "joined", room, sender });
       const hist = history.get(room) || [];
-      for (const h of hist) send(ws, { type: "msg", ...h });
+      for (const h of hist) {
+        if (h.channel === "whisper" && h.target) {
+          const name = sender.toLowerCase();
+          if (
+            name !== String(h.target).toLowerCase() &&
+            name !== String(h.sender || "").toLowerCase()
+          ) {
+            continue;
+          }
+        }
+        send(ws, { type: "msg", ...h });
+      }
       broadcast(room, { type: "presence", room, sender, event: "join" }, ws);
       return;
     }
@@ -137,9 +158,17 @@ wss.on("connection", (ws) => {
     }
 
     if (type === "msg") {
-      const room = normalizeRoom(msg.room);
+      const channel = String(msg.channel || "say").toLowerCase();
+      let room = msg.room;
+      if (!room) {
+        if (channel === "whisper") room = "whisper";
+        else if (channel === "trade") room = "global-trade";
+        else if (channel === "city") room = "global-city";
+        else if (channel === "room") room = "room:" + String(msg.roomName || "general").toLowerCase();
+        else room = "global-say";
+      }
+      room = normalizeRoom(room);
       if (!ws.ichatRooms.has(room)) {
-        // Auto-join so a single msg works from thin clients.
         roomSet(room).add(ws);
         ws.ichatRooms.add(room);
       }
@@ -152,12 +181,15 @@ wss.on("connection", (ws) => {
         type: "msg",
         id: msg.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         room,
+        channel,
+        roomName: msg.roomName ? String(msg.roomName).slice(0, 64) : undefined,
+        target: msg.target ? String(msg.target).slice(0, 64) : undefined,
         sender: String(msg.sender || ws.ichatSender || "anon").slice(0, 64),
         text,
         ts: Number(msg.ts) || Date.now(),
       };
-      pushHistory(room, payload);
-      // Echo to sender + everyone else in the room.
+      // Whispers: don't put private text in shared history for everyone.
+      if (channel !== "whisper") pushHistory(room, payload);
       broadcast(room, payload);
       return;
     }
@@ -170,13 +202,13 @@ wss.on("connection", (ws) => {
 });
 
 const heartbeat = setInterval(() => {
-  for (const ws of wss.clients) {
-    if (!ws.isAlive) {
-      ws.terminate();
+  for (const client of wss.clients) {
+    if (!client.isAlive) {
+      client.terminate();
       continue;
     }
-    ws.isAlive = false;
-    ws.ping();
+    client.isAlive = false;
+    client.ping();
   }
 }, 30000);
 

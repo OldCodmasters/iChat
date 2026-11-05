@@ -1,12 +1,12 @@
 ## Interface: 120105, 11509, 50504
 ## Title: iChat
-## Notes: Cross-region room chat via local companion + WebSocket relay. Companion required.
+## Notes: GlobalChat — cross-region channels in Chat settings (companion + relay required).
 ## Author: OldCodmasters
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: IChatDB
 ## X-Website: https://github.com/OldCodmasters/iChat
 ## X-Category: Chat/Communication
 
 Inbox.lua
 iChat.lua
-UI.lua
+Channels.lua
